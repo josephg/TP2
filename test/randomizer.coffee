@@ -6,17 +6,17 @@ i = util.inspect
 
 {randomInt, randomReal, seed} = helpers
 
-# Returns [serverDoc, clientDoc]
+# Returns client result
 testRandomOp = (type, initialDoc = type.initialVersion()) ->
 	makeDoc = -> {
 			ops: []
 			result: initialDoc
 		}
-	server = makeDoc()
-	client = makeDoc()
+	opSets = (makeDoc() for [0...3])
+	[client, client2, server] = opSets
 
-	for [0..(randomReal() * 2 + 1)]
-		doc = if randomReal() < 0.5 then client else server
+	for [0...6]
+		doc = opSets[randomInt 3]
 		[op, doc.result] = type.generateRandomOp doc.result
 		doc.ops.push(op)
 
@@ -26,25 +26,23 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 		s = type.apply s, op for op in doc.ops
 		assert.deepEqual s, doc.result
 	
-	testApply client
-	testApply server
+	testApply set for set in opSets
 
 	if type.invert?
 		# Invert all the ops and apply them to result. Should end up with initialDoc.
-		testInvert = (doc, ops) ->
+		testInvert = (doc, ops = doc.ops) ->
 			snapshot = JSON.parse(JSON.stringify(doc.result))
 
 			# Sadly, coffeescript doesn't seem to support iterating backwards through an array.
 			# reverse() reverses an array in-place so it needs to be cloned first.
-			ops = ops.slice().reverse()
+			ops = doc.ops.slice().reverse()
 			for op in ops
 				op_ = type.invert op
 				snapshot = type.apply snapshot, op_
 
 			assert.deepEqual snapshot, initialDoc
 	
-	testInvert? client, client.ops
-	testInvert? server, server.ops
+		testInvert set for set in opSets
 
 	# If all the ops are composed together, then applied, we should get the same result.
 	if type.compose?
@@ -54,11 +52,9 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 				# .... And this should match the expected document.
 				assert.deepEqual doc.result, type.apply initialDoc, doc.composed
 
-		compose client
-		compose server
+		compose set for set in opSets
 
-		testInvert? client, [client.composed] if client.composed?
-		testInvert? server, [server.composed] if server.composed?
+		testInvert? set, [set.composed] for set in opSets when set.composed?
 	
 		# Check the diamond property holds
 		if client.composed? && server.composed?
@@ -72,6 +68,13 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 			#	server.ops = [ [ { d: 'x' } ], [ { i: 'c' } ] ]
 			#	client.ops = [ 1, { i: 'b' } ]
 			assert.deepEqual s_c, c_s
+
+			if type.tp2 and client2.composed?
+				# TP2 requires that T(op3, op1 . T(op2, op1)) == T(op3, op2 . T(op1, op2)).
+				lhs = type.transform client2.composed, (type.compose client.composed, server_), 'client'
+				rhs = type.transform client2.composed, (type.compose server.composed, client_), 'client'
+
+				assert.deepEqual lhs, rhs
 
 	# Now we'll check the n^2 transform method.
 	if client.ops.length > 0 && server.ops.length > 0
