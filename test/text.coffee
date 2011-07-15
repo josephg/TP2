@@ -10,86 +10,123 @@ text = require '../src/text'
 p = util.debug
 i = util.inspect
 
-# A bunch of normal tests for TP1 composable text
+exports['transform sanity'] = (test) ->
+	tc = (op1, op2, expected, delta) ->
+		if delta?
+			test.deepEqual (text.transform op1, op2, delta), expected
+		else
+			test.deepEqual (text.transform op1, op2, -1), expected
+			test.deepEqual (text.transform op1, op2, 1), expected
+	
+	tc [], [], []
+	tc [10], [10], [10]
+	tc [{i:'hi'}], [], [{i:'hi'}]
+	tc [{t:5}], [], [{t:5}]
+	tc [{d:5}], [5], [{d:5}]
 
-exports.testTransforms = (test) ->
-	testData = fs.readFileSync(__dirname + '/text-transform-tests.json').toString().split('\n')
+	tc [10], [10, {i:'hi'}], [12]
+	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [{i:'aaa'}, 13], -1
+	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [3, {i:'aaa'}, 10], 1
+	tc [10, {t:5}], [{i:'hi'}, 10], [12, {t:5}]
+	tc [{d:5}], [{i:'hi'}, 5], [2, {d:5}]
 
-	while testData.length >= 4
-		op = JSON.parse(testData.shift())
-		otherOp = JSON.parse(testData.shift())
-		type = testData.shift()
-		expected = JSON.parse(testData.shift())
-
-		result = text.transform op, otherOp, type
-
-		test.deepEqual result, expected
-
-	test.done()
-
-exports.testCompose = (test) ->
-	testData = fs.readFileSync(__dirname + '/text-transform-tests.json').toString().split('\n')
-
-	while testData.length >= 4
-		testData.shift()
-		op1 = JSON.parse(testData.shift())
-		testData.shift()
-		op2 = JSON.parse(testData.shift())
-
-		result = text.compose(op1, op2)
-		# nothing interesting is done with result... This test just makes sure compose runs
-		# without crashing.
+	tc [10], [{d:10}], [10]
+	tc [{i:'hi'}, 10], [{d:10}], [{i:'hi'}, 10]
+	tc [10, {t:5}], [{d:10}], [10, {t:5}]
+	tc [{d:5}], [{d:5}], [{d:5}]
+	
+	tc [{i:'mimsy'}], [{t: 10}], [{i:'mimsy'}, 10], -1
 
 	test.done()
 
 exports.testNormalize = (test) ->
-	test.deepEqual [], text.normalize([0])
-	test.deepEqual [], text.normalize([{i:''}])
-	test.deepEqual [], text.normalize([{d:''}])
+	tn = (input, expected) ->
+		test.deepEqual text.normalize(input), expected
+	
+	tn [0], []
+	tn [{i:''}], []
+	tn [{d:0}], []
+	tn [{t:0}], []
 
-	test.deepEqual [2], text.normalize([1,1])
-	test.deepEqual [2], text.normalize([2,0])
-	test.deepEqual [{i:'a'}], text.normalize([{i:'a'}, 0])
-	test.deepEqual [{i:'ab'}], text.normalize([{i:'a'}, {i:'b'}])
-	test.deepEqual [{i:'ab'}], text.normalize([{i:'ab'}, {i:''}])
-	test.deepEqual [{i:'ab'}], text.normalize([0, {i:'a'}, 0, {i:'b'}, 0])
-	test.deepEqual [{i:'a'}, 1, {i:'b'}], text.normalize([{i:'a'}, 1, {i:'b'}])
+	tn [1, 1], [2]
+	tn [2, 0], [2]
+
+	tn [{t:4}, {t:5}], [{t:9}]
+	tn [{d:4}, {d:5}], [{d:9}]
+	tn [{t:4}, {d:5}], [{t:4}, {d:5}]
+
+	tn [{i:'a'}, 0], [{i:'a'}]
+	tn [{i:'a'}, {i:'b'}], [{i:'ab'}]
+	tn [0, {i:'a'}, 0, {i:'b'}, 0], [{i:'ab'}]
+
+	tn [{i:'ab'}, {i:''}], [{i:'ab'}]
+	tn [{i:'ab'}, {d:0}], [{i:'ab'}]
+	tn [{i:'ab'}, {t:0}], [{i:'ab'}]
+
+	tn [{i:'a'}, 1, {i:'b'}], [{i:'a'}, 1, {i:'b'}]
 
 	test.done()
 
-text.generateRandomOp = (docStr) ->
-	initial = docStr
+exports.testApply = (test) ->
+	ta = (doc, op, expected) ->
+		newDoc = text.apply doc, op
+		test.deepEqual newDoc, expected
+
+	ta [''], [{t: 5}], [5]
+	ta ['abc', 1, 'defghij'], [{d:5}, 6], [5, 'efghij']
+
+	test.done()
+
+exports.testCompose = (test) ->
+	tc = (op1, op2, expected) ->
+		c = text.compose op1, op2
+		test.deepEqual c, expected
+
+	tc [{i:'abcde'}], [3, {d:1}, 1], [{i:'abc'}, {t:1}, {i:'e'}]
+
+	test.done()
+	
+text.generateRandomOp = (doc) ->
+	position = {index:0, offset:0}
+	remainder = totalLength = doc.reduce ((x, y) -> x + (y.length || y)), 0
+
+	newDoc = []
 
 	op = []
-	expectedDoc = ''
 
-	append = text._append
-	
+	{_appendPart:appendPart, _takePart:takePart, _append:append} = text
+
 	addSkip = () ->
-		length = randomInt(Math.min(docStr.length, 3)) + 1
+		length = Math.min(remainder, randomInt(totalLength / 2) + 1)
+		remainder -= length
 
 		append op, length
-		expectedDoc += docStr[0...length]
-		docStr = docStr[length..]
-	
+		while length > 0
+			part = takePart doc, position, length
+			appendPart newDoc, part
+			length -= part.length || part
+
 	addInsert = () ->
 		# Insert a random word from the list
 		word = randomWord() + ' '
 
 		append op, {i:word}
-		expectedDoc += word
+		appendPart newDoc, word
 
 	addDelete = () ->
-		length = randomInt(Math.min(docStr.length, 7)) + 1
-		deletedStr = docStr[0...length]
+		length = Math.min(remainder, randomInt(totalLength / 2) + 1)
+		remainder -= length
 
-		append op, {d:deletedStr}
-		docStr = docStr[length..]
+		appendPart newDoc, length
+		append op, {d:length}
 
-	while docStr.length > 0
+		while length > 0
+			part = takePart doc, position, length
+			length -= part.length || part
+
+	while remainder > 0
 		# If the document is long, we'll bias it toward deletes
-		chance = if initial.length > 100 then 4 else 3
-		switch randomInt(chance)
+		switch randomInt 4
 			when 0 then addSkip()
 			when 1 then addInsert()
 			when 2, 3 then addDelete()
@@ -98,8 +135,12 @@ text.generateRandomOp = (docStr) ->
 	addInsert() if randomInt(3) == 0
 
 #	p "#{initial} -> #{expectedDoc}"
-#	p "'#{initial}' -> '#{expectedDoc}' after applying #{util.inspect op}"
-	[op, expectedDoc]
+#	p "#{i doc} -> #{i newDoc} after applying #{i op}"
+
+	
+#	console.log "complexity: #{doc.length}"
+
+	[op, newDoc]
 
 text.generateRandomDoc = randomWord
 

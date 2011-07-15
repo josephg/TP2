@@ -15,13 +15,11 @@
 #
 # Eg: [3, {i:'hi'}, 5, {d:8}]
 #
-# Snapshots contain the document string and a tombstone list. The document string is simply
-# a string of all the characters that have not been deleted. The tombstone list is a list of
-# non-zero numbers: [4, -2, 3]. Positive numbers indiciate charaters that are not tombstoned
-# (and are instead part of the document string). Negative numbers indiciate tombstones.
+# Snapshots are lists with characters and tombstones. Characters are stored in strings
+# and adjacent tombstones are flattened into numbers.
 #
 # Eg, the document: 'Hello .....world' ('.' denotes tombstoned (deleted) characters)
-# would be represented by a document snapshot of {s:'Hello world', t:[6, -5, 5]}.
+# would be represented by a document snapshot of ['Hello ', 5, 'world']
 
 p = -> #require('util').debug
 i = -> #require('util').inspect
@@ -32,11 +30,12 @@ exports.name = 'text-tp2'
 
 exports.tp2 = true
 
-exports.initialVersion = () -> {s:'', t:[]}
+exports.initialVersion = () -> []
 
 # -------- Utility methods
 
 checkOp = (op) ->
+	#	p "checkOp #{i op}"
 	throw new Error('Op must be an array of components') unless Array.isArray(op)
 	last = null
 	for c in op
@@ -46,7 +45,7 @@ checkOp = (op) ->
 			else if c.d != undefined
 				throw new Error('Deletes must be a +ive number') unless typeof(c.d) == 'number' and c.d > 0
 			else if c.t != undefined
-				throw new Error('Tombstone inserts must insert +ive tombs') unless typeof(c.t) == 'number' and c.i > 0
+				throw new Error('Tombstone inserts must insert +ive tombs') unless typeof(c.t) == 'number' and c.t > 0
 			else
 				throw new Error('Operation component must define .i, .t or .d')
 		else
@@ -56,10 +55,11 @@ checkOp = (op) ->
 
 		last = c
 
-# Makes a function for appending components to a given op.
+# Append an op component to the end of the specified op.
 # Exported for the randomOpGenerator.
 exports._append = append = (op, component) ->
-	if component == 0 || component.i == '' || component.i == 0 || component.d == ''
+	#	p "append #{i op} + #{i component}"
+	if component == 0 || component.i == '' || component.t == 0 || component.d == 0
 		return
 	else if op.length == 0
 		op.push component
@@ -76,6 +76,7 @@ exports._append = append = (op, component) ->
 		else
 			op.push component
 	
+	#p "-> #{i op}"
 	# TODO: Comment this out once debugged.
 	checkOp op
 
@@ -88,18 +89,19 @@ makeTake = (op) ->
 	offset = 0
 
 	# Take up to length n from the front of op. If n is null, take the next
-	# op component. If indivisableField == 'd', delete components won't be separated.
-	# If indivisableField == 'i', insert components won't be separated.
+	# op component. If insertsIndivisible is true, inserts (& insert tombstones) won't be separated.
 	#
 	# Returns null once op is fully consumed.
-	take = (n, indivisableField) ->
+	take = (n, insertsIndivisible) ->
+		p "take #{n} idx: #{idx} off: #{offset}"
 		return null if idx == op.length
+
 		#assert.notStrictEqual op.length, i, 'The op is too short to traverse the document'
 
 		e = op[idx]
+#		p "idx: #{idx} op: #{p op} e: #{p e}"
 		if typeof((current = e)) == 'number' or (current = e.t) != undefined or (current = e.d) != undefined
-			indivisableField = 't' if indivisableField = 'i'
-			if !n? or current - offset <= n or e[indivisableField] != undefined
+			if !n? or current - offset <= n or (insertsIndivisible and e.t != undefined)
 				# Return the rest of the current element.
 				c = current - offset
 				++idx; offset = 0
@@ -109,12 +111,13 @@ makeTake = (op) ->
 			if e.t != undefined then {t:c} else if e.d != undefined then {d:c} else c
 		else
 			# Take from the inserted string
-			if !n? or e.i.length - offset <= n or indivisableField == 'i'
+			if !n? or e.i.length - offset <= n or insertsIndivisible
+				result = {i:e.i[offset..]}
 				++idx; offset = 0
-				{i:e.i[offset..]}
 			else
+				result = {i:e.i[offset...offset + n]}
 				offset += n
-				{i:e.i[offset...(offset + n)]}
+			result
 	
 	peekType = () ->
 		op[idx]
@@ -138,79 +141,73 @@ exports.normalize = (op) ->
 	append newOp, component for component in op
 	newOp
 
-# Apply the op to the string. Returns the new string.
+# Take the next part from the specified position in a document snapshot.
+# position = {index, offset}. It will be updated.
+exports._takePart = takePart = (doc, position, maxlength) ->
+	throw new Error 'Operation goes past the end of the document' if position.index >= doc.length
+
+	part = doc[position.index]
+	# peel off doc[0]
+	result = if typeof(part) == 'string'
+		part[position.offset...(position.offset + maxlength)]
+	else
+		Math.min(maxlength, part - position.offset)
+
+	if (part.length || part) - position.offset > maxlength
+		position.offset += maxlength
+	else
+		position.index++
+		position.offset = 0
+	
+	result
+
+# Append a part to the end of a list
+exports._appendPart = appendPart = (doc, p) ->
+	if doc.length == 0
+		doc.push p
+	else if typeof(doc[doc.length - 1]) == typeof(p)
+		doc[doc.length - 1] += p
+	else
+		doc.push p
+	return
+
+# Apply the op to the document. The document is not modified in the process.
 exports.apply = (doc, op) ->
-	p "Applying #{i op} to '#{doc}'"
-	{s:str, t:tombs} = doc
-	throw new Error('Snapshot is invalid') unless typeof(str) == 'string' and Array.isArray(tombs)
+	p "Applying #{i op} to #{i doc}"
+	throw new Error('Snapshot is invalid') unless Array.isArray(doc)
 	checkOp op
 
-	# The position in the string
-	pos = 0
-	# The position in the tombstone list
-	tombPos = 0
-	tombOffset = 0
-	# The new string, in little strings that will be .join()'ed.
-	newStr = []
-	newTombs = []
-
-	appendTomb = (n) ->
-		if newTombs.length == 0
-			newTombs.push n
-		else if (n ^ newTombs[newTombs.length - 1]) > 0 # They have the same sign
-			newTombs[newTombs.length - 1] += n
-		else
-			newTombs.push n
-		return
-
-	consume = (n) ->
-		throw new Error('Applied operation is too long') if tombPos == tombs.length
-		t = Math.abs tombs[tombPos]
-		if n + tombOffset >= t
-			# the remainder is bigger. Consume the tomb.
-			skipped = t - tombOffset
-			tombOffset = 0; tombPos++
-		else
-			skipped = n
-			tombOffset += n
-
-		if tombs[tombPos] > 0
-			pos += skipped
-			skipped
-		else
-			-skipped
+	newDoc = []
+	position = {index:0, offset:0}
 
 	for component in op
 		if typeof(component) == 'number'
 			remainder = component
 			while remainder > 0
-				skipped = consume remainder
-
-				if skipped > 0
-					# Consume part of the string
-					throw new Error 'Operation goes past the end of the document' if pos > str.length
-					newStr.push str[pos - skipped...pos]
-
-				appendTomb skipped
+				part = takePart doc, position, remainder
+				
+				appendPart newDoc, part
+				remainder -= part.length || part
 
 		else if component.i != undefined
-			newDoc.push component.i
-			appendTomb component.i.length
+			appendPart newDoc, component.i
 		else if component.t != undefined
-			appendTomb -component.t
+			appendPart newDoc, component.t
 		else if component.d != undefined
 			remainder = component.d
 			while remainder > 0
-				skipped = consume remainder
-				appendTomb (if skipped > 0 then skipped else -skipped)
+				part = takePart doc, position, remainder
+				remainder -= part.length || part
+			appendPart newDoc, component.d
 	
-	{s:newStr.join '', t:newTombs}
+	p "= #{i newDoc}"
+	newDoc
 
 # transform op1 by op2. Return transformed version of op1.
 # op1 and op2 are unchanged by transform.
 # idDelta should be op1.id - op2.id
 exports.transform = (op, otherOp, idDelta) ->
-	p "TRANSFORM op #{i op} by #{i otherOp} (delta: #{idDelta}"
+	p "TRANSFORM op #{i op} by #{i otherOp} (delta: #{idDelta})"
 	throw new Error 'idDelta not specified' unless typeof(idDelta) == 'number' and idDelta != 0
 
 	checkOp op
@@ -223,7 +220,7 @@ exports.transform = (op, otherOp, idDelta) ->
 		if typeof(component) == 'number' or component.d != undefined # Skip or delete
 			length = component.d or component
 			while length > 0
-				chunk = take(length, 'i')
+				chunk = take length, true
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				append newOp, chunk
@@ -231,17 +228,18 @@ exports.transform = (op, otherOp, idDelta) ->
 		else if component.i or component.t != undefined # Insert text or tombs
 			if idDelta < 0
 				# The server's insert should go first.
-				o = peek()
-				append newOp, take() if o?.i or o?.t != undefined
+				while ((o = peek()) and (o.i or o.t != undefined))
+					append newOp, take()
 
 			# In any case, skip the inserted text.
-			append newOp, component.i.length
+			append newOp, component.t || component.i.length
 	
 	# Append extras from op1
 	while (component = take())
-		throw new Error "Remaining fragments in the op: #{i component}" unless component.i
+		throw new Error "Remaining fragments in the op: #{i component}" unless component.i or component.t != undefined
 		append newOp, component
 
+	p "T = #{i newOp}"
 	newOp
 
 
@@ -256,36 +254,46 @@ exports.compose = (op1, op2) ->
 	[take, _] = makeTake op1
 
 	for component in op2
+		p "component in op2 #{i component}"
+
 		if typeof(component) == 'number' # Skip
 			# Just copy from op1.
 			length = component
 			while length > 0
 				chunk = take length
+				p "take #{length} = #{i chunk}"
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				append result, chunk
 				length -= componentLength chunk
+				p "#{i chunk} length = #{componentLength chunk}, length -> #{length}"
 
 		else if component.i or component.t != undefined # Insert
-			append result, {i:component.i}
+			clone = if component.i then {i:component.i} else {t:component.t}
+			append result, clone
 
 		else # Delete
-			offset = 0
-			while offset < component.d.length
-				chunk = take(component.d.length - offset)
+			length = component.d
+			p "delete #{length}"
+			while length > 0
+				chunk = take length
+				p "chunk #{i chunk}"
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
-				length = componentLength chunk
+				chunkLength = componentLength chunk
 				if chunk.i or chunk.t != undefined
-					append result, {t:length}
+					append result, {t:chunkLength}
 				else
-					append result, {d:length}
+					append result, {d:chunkLength}
 
-				offset += length
+				length -= chunkLength
 		
 	# Append extras from op1
-	throw new Error "Trailing stuff in op1" unless take() == null
+	while (component = take())
+		throw new Error "Remaining fragments in op1: #{i component}" unless component.i or component.t != undefined
+		append result, component
 
+	p "= #{i result}"
 	result
 
 if window?

@@ -1,8 +1,8 @@
 assert = require 'assert'
 helpers = require './misc'
 util = require 'util'
-p = util.debug
-i = util.inspect
+p = -> #util.debug
+i = -> #util.inspect
 
 {randomInt, randomReal, seed} = helpers
 
@@ -19,6 +19,8 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 		doc = opSets[randomInt 3]
 		[op, doc.result] = type.generateRandomOp doc.result
 		doc.ops.push(op)
+
+	p "Doc #{i initialDoc} + #{i ops} = #{i result}" for {ops, result} in [client, client2, server]
 
 	# First, test type.apply.
 	testApply = (doc) ->
@@ -46,6 +48,7 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 
 	# If all the ops are composed together, then applied, we should get the same result.
 	if type.compose?
+		p 'COMPOSE'
 		compose = (doc) ->
 			if doc.ops.length > 0
 				doc.composed = helpers.composeList type, doc.ops
@@ -71,15 +74,17 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 
 			if type.tp2 and client2.composed?
 				# TP2 requires that T(op3, op1 . T(op2, op1)) == T(op3, op2 . T(op1, op2)).
-				lhs = type.transform client2.composed, (type.compose client.composed, server_), 'client'
-				rhs = type.transform client2.composed, (type.compose server.composed, client_), 'client'
+				lhs = type.transform client2.composed, (type.compose client.composed, server_), -1
+				rhs = type.transform client2.composed, (type.compose server.composed, client_), -1
 
 				assert.deepEqual lhs, rhs
 
 	# Now we'll check the n^2 transform method.
 	if client.ops.length > 0 && server.ops.length > 0
-#		p "s #{i server.result} c #{i client.result} XF #{i server.ops} x #{i client.ops}"
+		p 'TP2'
+		p "s #{i server.result} c #{i client.result} XF #{i server.ops} x #{i client.ops}"
 		[s_, c_] = helpers.transformLists type, server.ops, client.ops
+		p "XF result #{i s_} x #{i c_}"
 #		p "applying #{i c_} to #{i server.result}"
 		s_c = c_.reduce type.apply, server.result
 		c_s = s_.reduce type.apply, client.result
@@ -96,10 +101,28 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 	
 	client.result
 
+collectStats = (type) ->
+	orig = {transform: type.transform, compose: type.compose, apply: type.apply}
+	restore = ->
+		type.transform = orig.transform
+		type.compose = orig.compose
+		type.apply = orig.apply
+	
+	stats = {transform:0, compose:0, apply:0}
+	collect = (fn) -> (args...) ->
+		stats[fn]++
+		orig[fn].apply null, args
+	
+	type[fn] = collect fn for fn in ['transform', 'compose', 'apply']
+
+	[stats, restore]
+
 # Run some iterations of the random op tester. Requires a random op generator for the type.
-exports.test = (type, iterations = 300) ->
+exports.test = (type, iterations = 20000) ->
 	assert.ok type.generateRandomOp
 	assert.ok type.transform
+
+	[stats, restore] = collectStats type
 
 	console.error "   Running #{iterations} randomized tests for type #{type.name}..."
 	console.error "     (seed: #{seed})" if seed
@@ -109,6 +132,15 @@ exports.test = (type, iterations = 300) ->
 	warnUnless 'compose'
 
 	doc = type.initialVersion()
+
+	console.time 'randomizer'
 	for n in [0..iterations]
-#		p n if n % 200 == 0
+		if n % 200 == 0
+			process.stdout.write (if n % 1000 == 0 then "#{n}" else '.')
 		doc = testRandomOp(type, doc)
+	console.log()
+
+	console.timeEnd 'randomizer'
+	console.log "Performed #{stats.transform} transforms, #{stats.compose} composes and #{stats.apply} applies"
+
+	restore()
