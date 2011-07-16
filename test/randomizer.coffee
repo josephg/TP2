@@ -79,9 +79,17 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 
 				assert.deepEqual lhs, rhs
 	
-#	if type.prune?
-#		p 'PRUNE'
+	if type.prune?
+		p 'PRUNE'
 		
+		[op1] = type.generateRandomOp initialDoc
+		[op2] = type.generateRandomOp initialDoc
+
+		for idDelta in [-1, 1]
+			op1_ = type.transform op1, op2, idDelta
+			op1_pruned = type.prune op1_, op2, idDelta
+
+			assert.deepEqual op1, op1_pruned
 
 	# Now we'll check the n^2 transform method.
 	if client.ops.length > 0 && server.ops.length > 0

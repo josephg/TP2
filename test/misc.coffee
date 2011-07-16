@@ -34,14 +34,7 @@ exports.transformLists = (type, serverOps, clientOps) ->
 	[serverOps, clientOps]
 
 # Compose a list of ops together
-exports.composeList = (type, ops) ->
-	result = null
-	for op in ops
-		if result == null
-			result = op
-		else
-			result = type.compose result, op
-	result
+exports.composeList = (type, ops) -> ops.reduce type.compose
 
 # Returns a function that calls test.done() after it has been called n times
 exports.makePassPart = (test, n) ->

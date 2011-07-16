@@ -193,12 +193,9 @@ exports.normalize = (op) ->
 	append newOp, component for component in op
 	newOp
 
-# transform op1 by op2. Return transformed version of op1.
-# op1 and op2 are unchanged by transform.
-# idDelta should be op1.id - op2.id
-exports.transform = (op, otherOp, idDelta) ->
-	p "TRANSFORM op #{i op} by #{i otherOp} (delta: #{idDelta})"
-	throw new Error 'idDelta not specified' unless typeof(idDelta) == 'number' and idDelta != 0
+# This is a helper method to transform and prune. goForwards is true for transform, false for prune.
+transformer = (op, otherOp, goForwards, idDelta) ->
+	p "TRANSFORMER op #{i op} by #{i otherOp} (delta: #{idDelta}) forwards: #{goForwards}"
 
 	checkOp op
 	checkOp otherOp
@@ -207,31 +204,55 @@ exports.transform = (op, otherOp, idDelta) ->
 	[take, peek] = makeTake op
 
 	for component in otherOp
-		if typeof(component) == 'number' or component.d != undefined # Skip or delete
-			length = component.d or component
+		length = componentLength component
+
+		if component.i != undefined # Insert text or tombs
+			if goForwards # transform - insert skips over inserted parts
+				if idDelta < 0
+					# The server's insert should go first.
+					append newOp, take() while peek()?.i != undefined
+
+				# In any case, skip the inserted text.
+				append newOp, length
+
+			else # Prune. Remove skips for inserts.
+				while length > 0
+					chunk = take length, true
+
+					throw new Error 'The transformed op is invalid' unless chunk != null
+					throw new Error 'The transformed op deletes locally inserted characters - it cannot be purged of the insert.' if chunk.d != undefined
+
+					if typeof chunk is 'number'
+						length -= chunk
+					else
+						append newOp, chunk
+
+		else # Skip or delete
 			while length > 0
 				chunk = take length, true
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				append newOp, chunk
-				length -= componentLength chunk unless chunk.i != undefined
-		else if component.i != undefined # Insert text or tombs
-			if idDelta < 0
-				# The server's insert should go first.
-				while ((o = peek()) and o.i != undefined)
-					append newOp, take()
-
-			# In any case, skip the inserted text.
-			append newOp, component.i.length || component.i
+				length -= componentLength chunk unless chunk.i
 	
 	# Append extras from op1
 	while (component = take())
-		throw new Error "Remaining fragments in the op: #{i component}" unless component.i != undefined
+		throw new Error "Remaining fragments in the op: #{component}" unless component.i != undefined
 		append newOp, component
 
 	p "T = #{i newOp}"
 	newOp
 
+
+# transform op1 by op2. Return transformed version of op1.
+# op1 and op2 are unchanged by transform.
+# idDelta should be op1.id - op2.id
+exports.transform = (op, otherOp, idDelta) ->
+	throw new Error 'idDelta not specified' unless typeof(idDelta) == 'number' and idDelta != 0
+	transformer op, otherOp, true, idDelta
+
+# Prune is the inverse of transform.
+exports.prune = (op, otherOp) -> transformer op, otherOp, false
 
 # Compose 2 ops into 1 op.
 exports.compose = (op1, op2) ->
@@ -279,7 +300,7 @@ exports.compose = (op1, op2) ->
 		
 	# Append extras from op1
 	while (component = take())
-		throw new Error "Remaining fragments in op1: #{i component}" unless component.i != undefined
+		throw new Error "Remaining fragments in op1: #{component}" unless component.i != undefined
 		append result, component
 
 	p "= #{i result}"

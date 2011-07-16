@@ -14,9 +14,13 @@ exports['transform sanity'] = (test) ->
 	tc = (op1, op2, expected, delta) ->
 		if delta?
 			test.deepEqual (text.transform op1, op2, delta), expected
+			test.deepEqual (text.prune expected, op2, delta), op1
 		else
 			test.deepEqual (text.transform op1, op2, -1), expected
+			test.deepEqual (text.prune expected, op2, -1), op1
+
 			test.deepEqual (text.transform op1, op2, 1), expected
+			test.deepEqual (text.prune expected, op2, 1), op1
 	
 	tc [], [], []
 	tc [10], [10], [10]
