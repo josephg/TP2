@@ -10,7 +10,7 @@
 # Components are either:
 #   N:         Skip N characters in the original document
 #   {i:'str'}: Insert 'str' at the current position in the document
-#   {t:N}:     Insert N tombstones at the current position in the document
+#   {i:N}:     Insert N tombstones at the current position in the document
 #   {d:N}:     Delete (tombstone) N characters at the current position in the document
 #
 # Eg: [3, {i:'hi'}, 5, {d:8}]
@@ -21,8 +21,8 @@
 # Eg, the document: 'Hello .....world' ('.' denotes tombstoned (deleted) characters)
 # would be represented by a document snapshot of ['Hello ', 5, 'world']
 
-p = -> #require('util').debug
-i = -> #require('util').inspect
+p = ->#require('util').debug
+i = ->#require('util').inspect
 
 exports ?= {}
 
@@ -35,19 +35,17 @@ exports.initialVersion = () -> []
 # -------- Utility methods
 
 checkOp = (op) ->
-	#	p "checkOp #{i op}"
+	#p "checkOp #{i op}"
 	throw new Error('Op must be an array of components') unless Array.isArray(op)
 	last = null
 	for c in op
 		if typeof(c) == 'object'
 			if c.i != undefined
-				throw new Error('Inserts must insert a string') unless typeof(c.i) == 'string' and c.i.length > 0
+				throw new Error('Inserts must insert a string or a +ive number') unless (typeof(c.i) == 'string' and c.i.length > 0) or (typeof(c.i) == 'number' and c.i > 0)
 			else if c.d != undefined
 				throw new Error('Deletes must be a +ive number') unless typeof(c.d) == 'number' and c.d > 0
-			else if c.t != undefined
-				throw new Error('Tombstone inserts must insert +ive tombs') unless typeof(c.t) == 'number' and c.t > 0
 			else
-				throw new Error('Operation component must define .i, .t or .d')
+				throw new Error('Operation component must define .i or .d')
 		else
 			throw new Error('Op components must be objects or numbers') unless typeof(c) == 'number'
 			throw new Error('Skip components must be a positive number') unless c > 0
@@ -105,8 +103,6 @@ exports.apply = (doc, op) ->
 
 		else if component.i != undefined
 			appendPart newDoc, component.i
-		else if component.t != undefined
-			appendPart newDoc, component.t
 		else if component.d != undefined
 			remainder = component.d
 			while remainder > 0
@@ -121,7 +117,7 @@ exports.apply = (doc, op) ->
 # Exported for the randomOpGenerator.
 exports._append = append = (op, component) ->
 	#	p "append #{i op} + #{i component}"
-	if component == 0 || component.i == '' || component.t == 0 || component.d == 0
+	if component == 0 || component.i == '' || component.i == 0 || component.d == 0
 		return
 	else if op.length == 0
 		op.push component
@@ -129,10 +125,8 @@ exports._append = append = (op, component) ->
 		last = op[op.length - 1]
 		if typeof(component) == 'number' && typeof(last) == 'number'
 			op[op.length - 1] += component
-		else if component.i != undefined && last.i?
+		else if component.i != undefined && last.i? && typeof(last.i) == typeof(component.i)
 			last.i += component.i
-		else if component.t != undefined && last.t?
-			last.t += component.t
 		else if component.d != undefined && last.d?
 			last.d += component.d
 		else
@@ -159,15 +153,15 @@ makeTake = (op) ->
 		return null if index == op.length
 
 		e = op[index]
-		if typeof((current = e)) == 'number' or (current = e.t) != undefined or (current = e.d) != undefined
-			if !maxlength? or current - offset <= maxlength or (insertsIndivisible and e.t != undefined)
+		if typeof((current = e)) == 'number' or typeof((current = e.i)) == 'number' or (current = e.d) != undefined
+			if !maxlength? or current - offset <= maxlength or (insertsIndivisible and e.i != undefined)
 				# Return the rest of the current element.
 				c = current - offset
 				++index; offset = 0
 			else
 				offset += maxlength
 				c = maxlength
-			if e.t != undefined then {t:c} else if e.d != undefined then {d:c} else c
+			if e.i != undefined then {i:c} else if e.d != undefined then {d:c} else c
 		else
 			# Take from the inserted string
 			if !maxlength? or e.i.length - offset <= maxlength or insertsIndivisible
@@ -186,11 +180,11 @@ makeTake = (op) ->
 componentLength = (component) ->
 	if typeof(component) == 'number'
 		component
-	else if component.i != undefined
+	else if typeof(component.i) == 'string'
 		component.i.length
 	else
-		# This should work because c.d and c.t must be +ive.
-		component.d or component.t
+		# This should work because c.d and c.i must be +ive.
+		component.d or component.i
 
 # Normalize an op, removing all empty skips and empty inserts / deletes. Concatenate
 # adjacent inserts and deletes.
@@ -220,19 +214,19 @@ exports.transform = (op, otherOp, idDelta) ->
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				append newOp, chunk
-				length -= componentLength chunk unless chunk.i or chunk.t != undefined
-		else if component.i or component.t != undefined # Insert text or tombs
+				length -= componentLength chunk unless chunk.i != undefined
+		else if component.i != undefined # Insert text or tombs
 			if idDelta < 0
 				# The server's insert should go first.
-				while ((o = peek()) and (o.i or o.t != undefined))
+				while ((o = peek()) and o.i != undefined)
 					append newOp, take()
 
 			# In any case, skip the inserted text.
-			append newOp, component.t || component.i.length
+			append newOp, component.i.length || component.i
 	
 	# Append extras from op1
 	while (component = take())
-		throw new Error "Remaining fragments in the op: #{i component}" unless component.i or component.t != undefined
+		throw new Error "Remaining fragments in the op: #{i component}" unless component.i != undefined
 		append newOp, component
 
 	p "T = #{i newOp}"
@@ -264,9 +258,8 @@ exports.compose = (op1, op2) ->
 				length -= componentLength chunk
 				p "#{i chunk} length = #{componentLength chunk}, length -> #{length}"
 
-		else if component.i or component.t != undefined # Insert
-			clone = if component.i then {i:component.i} else {t:component.t}
-			append result, clone
+		else if component.i != undefined # Insert
+			append result, {i:component.i}
 
 		else # Delete
 			length = component.d
@@ -277,8 +270,8 @@ exports.compose = (op1, op2) ->
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				chunkLength = componentLength chunk
-				if chunk.i or chunk.t != undefined
-					append result, {t:chunkLength}
+				if chunk.i != undefined
+					append result, {i:chunkLength}
 				else
 					append result, {d:chunkLength}
 
@@ -286,7 +279,7 @@ exports.compose = (op1, op2) ->
 		
 	# Append extras from op1
 	while (component = take())
-		throw new Error "Remaining fragments in op1: #{i component}" unless component.i or component.t != undefined
+		throw new Error "Remaining fragments in op1: #{i component}" unless component.i != undefined
 		append result, component
 
 	p "= #{i result}"

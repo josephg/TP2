@@ -21,21 +21,21 @@ exports['transform sanity'] = (test) ->
 	tc [], [], []
 	tc [10], [10], [10]
 	tc [{i:'hi'}], [], [{i:'hi'}]
-	tc [{t:5}], [], [{t:5}]
+	tc [{i:5}], [], [{i:5}]
 	tc [{d:5}], [5], [{d:5}]
 
 	tc [10], [10, {i:'hi'}], [12]
 	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [{i:'aaa'}, 13], -1
 	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [3, {i:'aaa'}, 10], 1
-	tc [10, {t:5}], [{i:'hi'}, 10], [12, {t:5}]
+	tc [10, {i:5}], [{i:'hi'}, 10], [12, {i:5}]
 	tc [{d:5}], [{i:'hi'}, 5], [2, {d:5}]
 
 	tc [10], [{d:10}], [10]
 	tc [{i:'hi'}, 10], [{d:10}], [{i:'hi'}, 10]
-	tc [10, {t:5}], [{d:10}], [10, {t:5}]
+	tc [10, {i:5}], [{d:10}], [10, {i:5}]
 	tc [{d:5}], [{d:5}], [{d:5}]
 	
-	tc [{i:'mimsy'}], [{t: 10}], [{i:'mimsy'}, 10], -1
+	tc [{i:'mimsy'}], [{i: 10}], [{i:'mimsy'}, 10], -1
 
 	test.done()
 
@@ -46,14 +46,14 @@ exports.testNormalize = (test) ->
 	tn [0], []
 	tn [{i:''}], []
 	tn [{d:0}], []
-	tn [{t:0}], []
+	tn [{i:0}], []
 
 	tn [1, 1], [2]
 	tn [2, 0], [2]
 
-	tn [{t:4}, {t:5}], [{t:9}]
+	tn [{i:4}, {i:5}], [{i:9}]
 	tn [{d:4}, {d:5}], [{d:9}]
-	tn [{t:4}, {d:5}], [{t:4}, {d:5}]
+	tn [{i:4}, {d:5}], [{i:4}, {d:5}]
 
 	tn [{i:'a'}, 0], [{i:'a'}]
 	tn [{i:'a'}, {i:'b'}], [{i:'ab'}]
@@ -61,7 +61,7 @@ exports.testNormalize = (test) ->
 
 	tn [{i:'ab'}, {i:''}], [{i:'ab'}]
 	tn [{i:'ab'}, {d:0}], [{i:'ab'}]
-	tn [{i:'ab'}, {t:0}], [{i:'ab'}]
+	tn [{i:'ab'}, {i:0}], [{i:'ab'}]
 
 	tn [{i:'a'}, 1, {i:'b'}], [{i:'a'}, 1, {i:'b'}]
 
@@ -72,7 +72,7 @@ exports.testApply = (test) ->
 		newDoc = text.apply doc, op
 		test.deepEqual newDoc, expected
 
-	ta [''], [{t: 5}], [5]
+	ta [''], [{i: 5}], [5]
 	ta ['abc', 1, 'defghij'], [{d:5}, 6], [5, 'efghij']
 
 	test.done()
@@ -82,7 +82,7 @@ exports.testCompose = (test) ->
 		c = text.compose op1, op2
 		test.deepEqual c, expected
 
-	tc [{i:'abcde'}], [3, {d:1}, 1], [{i:'abc'}, {t:1}, {i:'e'}]
+	tc [{i:'abcde'}], [3, {d:1}, 1], [{i:'abc'}, {i:1}, {i:'e'}]
 
 	test.done()
 	
@@ -96,7 +96,7 @@ text.generateRandomOp = (doc) ->
 
 	{_appendPart:appendPart, _takePart:takePart, _append:append} = text
 
-	addSkip = () ->
+	addSkip = ->
 		length = Math.min(remainder, randomInt(totalLength / 2) + 1)
 		remainder -= length
 
@@ -106,14 +106,13 @@ text.generateRandomOp = (doc) ->
 			appendPart newDoc, part
 			length -= part.length || part
 
-	addInsert = () ->
+	addInsert = ->
 		# Insert a random word from the list
-		word = randomWord() + ' '
+		content = if randomInt(2) then randomWord() + ' ' else randomInt(5) + 1
+		append op, {i:content}
+		appendPart newDoc, content
 
-		append op, {i:word}
-		appendPart newDoc, word
-
-	addDelete = () ->
+	addDelete = ->
 		length = Math.min(remainder, randomInt(totalLength / 2) + 1)
 		remainder -= length
 

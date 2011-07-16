@@ -78,6 +78,10 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 				rhs = type.transform client2.composed, (type.compose server.composed, client_), -1
 
 				assert.deepEqual lhs, rhs
+	
+#	if type.prune?
+#		p 'PRUNE'
+		
 
 	# Now we'll check the n^2 transform method.
 	if client.ops.length > 0 && server.ops.length > 0
