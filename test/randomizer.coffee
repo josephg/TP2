@@ -114,18 +114,21 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 	client.result
 
 collectStats = (type) ->
-	orig = {transform: type.transform, compose: type.compose, apply: type.apply}
+	functions = ['transform', 'compose', 'apply', 'prune']
+
+	orig = {}
+	orig[fn] = type[fn] for fn in functions
 	restore = ->
-		type.transform = orig.transform
-		type.compose = orig.compose
-		type.apply = orig.apply
+		type[fn] = orig[fn] for fn in functions
 	
-	stats = {transform:0, compose:0, apply:0}
+	stats = {}
+	stats[fn] = 0 for fn in functions
+
 	collect = (fn) -> (args...) ->
 		stats[fn]++
 		orig[fn].apply null, args
 	
-	type[fn] = collect fn for fn in ['transform', 'compose', 'apply']
+	type[fn] = collect fn for fn in functions
 
 	[stats, restore]
 
@@ -154,6 +157,8 @@ exports.test = (type, iterations = 40000) ->
 	console.log()
 
 	console.timeEnd 'randomizer'
-	console.log "Performed #{stats.transform} transforms, #{stats.compose} composes and #{stats.apply} applies"
+
+	console.log "Performed:"
+	console.log "\t#{fn}s: #{number}" for fn, number of stats
 
 	restore()
