@@ -8,7 +8,7 @@ exports.transformX = transformX = (type, server, client) ->
 	[type.transform(server, client, 1), type.transform(client, server, -1)]
 
 # new seed every 6 hours
-#exports.seed = Math.floor(Date.now() / (1000*60*60*6))
+exports.seed = Math.floor(Date.now() / (1000*60*60*6))
 if exports.seed?
 	{rand_real, seed} = require('./mersenne')
 	seed exports.seed

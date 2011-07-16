@@ -55,92 +55,6 @@ checkOp = (op) ->
 
 		last = c
 
-# Append an op component to the end of the specified op.
-# Exported for the randomOpGenerator.
-exports._append = append = (op, component) ->
-	#	p "append #{i op} + #{i component}"
-	if component == 0 || component.i == '' || component.t == 0 || component.d == 0
-		return
-	else if op.length == 0
-		op.push component
-	else
-		last = op[op.length - 1]
-		if typeof(component) == 'number' && typeof(last) == 'number'
-			op[op.length - 1] += component
-		else if component.i != undefined && last.i?
-			last.i += component.i
-		else if component.t != undefined && last.t?
-			last.t += component.t
-		else if component.d != undefined && last.d?
-			last.d += component.d
-		else
-			op.push component
-	
-	#p "-> #{i op}"
-	# TODO: Comment this out once debugged.
-	checkOp op
-
-# Makes 2 functions for taking components from the start of an op, and for peeking
-# at the next op that could be taken.
-makeTake = (op) ->
-	# The index of the next component to take
-	idx = 0
-	# The offset into the component
-	offset = 0
-
-	# Take up to length n from the front of op. If n is null, take the next
-	# op component. If insertsIndivisible is true, inserts (& insert tombstones) won't be separated.
-	#
-	# Returns null once op is fully consumed.
-	take = (n, insertsIndivisible) ->
-		p "take #{n} idx: #{idx} off: #{offset}"
-		return null if idx == op.length
-
-		#assert.notStrictEqual op.length, i, 'The op is too short to traverse the document'
-
-		e = op[idx]
-#		p "idx: #{idx} op: #{p op} e: #{p e}"
-		if typeof((current = e)) == 'number' or (current = e.t) != undefined or (current = e.d) != undefined
-			if !n? or current - offset <= n or (insertsIndivisible and e.t != undefined)
-				# Return the rest of the current element.
-				c = current - offset
-				++idx; offset = 0
-			else
-				offset += n
-				c = n
-			if e.t != undefined then {t:c} else if e.d != undefined then {d:c} else c
-		else
-			# Take from the inserted string
-			if !n? or e.i.length - offset <= n or insertsIndivisible
-				result = {i:e.i[offset..]}
-				++idx; offset = 0
-			else
-				result = {i:e.i[offset...offset + n]}
-				offset += n
-			result
-	
-	peekType = () ->
-		op[idx]
-	
-	[take, peekType]
-
-# Find and return the length of an op component
-componentLength = (component) ->
-	if typeof(component) == 'number'
-		component
-	else if component.i != undefined
-		component.i.length
-	else
-		# This should work because c.d and c.t must be +ive.
-		component.d or component.t
-
-# Normalize an op, removing all empty skips and empty inserts / deletes. Concatenate
-# adjacent inserts and deletes.
-exports.normalize = (op) ->
-	newOp = []
-	append newOp, component for component in op
-	newOp
-
 # Take the next part from the specified position in a document snapshot.
 # position = {index, offset}. It will be updated.
 exports._takePart = takePart = (doc, position, maxlength) ->
@@ -202,6 +116,88 @@ exports.apply = (doc, op) ->
 	
 	p "= #{i newDoc}"
 	newDoc
+
+# Append an op component to the end of the specified op.
+# Exported for the randomOpGenerator.
+exports._append = append = (op, component) ->
+	#	p "append #{i op} + #{i component}"
+	if component == 0 || component.i == '' || component.t == 0 || component.d == 0
+		return
+	else if op.length == 0
+		op.push component
+	else
+		last = op[op.length - 1]
+		if typeof(component) == 'number' && typeof(last) == 'number'
+			op[op.length - 1] += component
+		else if component.i != undefined && last.i?
+			last.i += component.i
+		else if component.t != undefined && last.t?
+			last.t += component.t
+		else if component.d != undefined && last.d?
+			last.d += component.d
+		else
+			op.push component
+	
+	#p "-> #{i op}"
+	# TODO: Comment this out once debugged.
+	checkOp op
+
+# Makes 2 functions for taking components from the start of an op, and for peeking
+# at the next op that could be taken.
+makeTake = (op) ->
+	# The index of the next component to take
+	index = 0
+	# The offset into the component
+	offset = 0
+
+	# Take up to length maxlength from the op. If maxlength is not defined, there is no max.
+	# If insertsIndivisible is true, inserts (& insert tombstones) won't be separated.
+	#
+	# Returns null when op is fully consumed.
+	take = (maxlength, insertsIndivisible) ->
+		p "take #{maxlength} index: #{index} off: #{offset}"
+		return null if index == op.length
+
+		e = op[index]
+		if typeof((current = e)) == 'number' or (current = e.t) != undefined or (current = e.d) != undefined
+			if !maxlength? or current - offset <= maxlength or (insertsIndivisible and e.t != undefined)
+				# Return the rest of the current element.
+				c = current - offset
+				++index; offset = 0
+			else
+				offset += maxlength
+				c = maxlength
+			if e.t != undefined then {t:c} else if e.d != undefined then {d:c} else c
+		else
+			# Take from the inserted string
+			if !maxlength? or e.i.length - offset <= maxlength or insertsIndivisible
+				result = {i:e.i[offset..]}
+				++index; offset = 0
+			else
+				result = {i:e.i[offset...offset + maxlength]}
+				offset += maxlength
+			result
+	
+	peekType = -> op[index]
+	
+	[take, peekType]
+
+# Find and return the length of an op component
+componentLength = (component) ->
+	if typeof(component) == 'number'
+		component
+	else if component.i != undefined
+		component.i.length
+	else
+		# This should work because c.d and c.t must be +ive.
+		component.d or component.t
+
+# Normalize an op, removing all empty skips and empty inserts / deletes. Concatenate
+# adjacent inserts and deletes.
+exports.normalize = (op) ->
+	newOp = []
+	append newOp, component for component in op
+	newOp
 
 # transform op1 by op2. Return transformed version of op1.
 # op1 and op2 are unchanged by transform.

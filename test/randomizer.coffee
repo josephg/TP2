@@ -15,7 +15,7 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 	opSets = (makeDoc() for [0...3])
 	[client, client2, server] = opSets
 
-	for [0...6]
+	for [0...10]
 		doc = opSets[randomInt 3]
 		[op, doc.result] = type.generateRandomOp doc.result
 		doc.ops.push(op)
@@ -118,7 +118,7 @@ collectStats = (type) ->
 	[stats, restore]
 
 # Run some iterations of the random op tester. Requires a random op generator for the type.
-exports.test = (type, iterations = 20000) ->
+exports.test = (type, iterations = 40000) ->
 	assert.ok type.generateRandomOp
 	assert.ok type.transform
 
@@ -134,9 +134,10 @@ exports.test = (type, iterations = 20000) ->
 	doc = type.initialVersion()
 
 	console.time 'randomizer'
+	iterationsPerPct = iterations / 100
 	for n in [0..iterations]
-		if n % 200 == 0
-			process.stdout.write (if n % 1000 == 0 then "#{n}" else '.')
+		if n % (iterationsPerPct * 2) == 0
+			process.stdout.write (if n % (iterationsPerPct * 10) == 0 then "#{n / iterationsPerPct}" else '.')
 		doc = testRandomOp(type, doc)
 	console.log()
 
