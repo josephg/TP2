@@ -145,7 +145,14 @@ text.generateRandomOp = (doc) ->
 
 	[op, newDoc]
 
-text.generateRandomDoc = randomWord
+text.generateRandomDoc = ->
+	stringNext = randomInt(2) == 0
+	for [0...randomInt(10)]
+		stringNext = !stringNext
+		if stringNext
+			randomWord()
+		else
+			randomInt(5) + 1
 
 exports.randomizer = (test) ->
 	require('./randomizer').test text

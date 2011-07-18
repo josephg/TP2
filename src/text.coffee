@@ -30,9 +30,7 @@ exports.name = 'text-tp2'
 
 exports.tp2 = true
 
-exports.initialVersion = () -> []
-
-# -------- Utility methods
+exports.initialVersion = -> []
 
 checkOp = (op) ->
 	#p "checkOp #{i op}"
@@ -133,8 +131,7 @@ exports._append = append = (op, component) ->
 			op.push component
 	
 	#p "-> #{i op}"
-	# TODO: Comment this out once debugged.
-	checkOp op
+	#checkOp op
 
 # Makes 2 functions for taking components from the start of an op, and for peeking
 # at the next op that could be taken.
