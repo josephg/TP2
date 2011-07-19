@@ -21,9 +21,6 @@
 # Eg, the document: 'Hello .....world' ('.' denotes tombstoned (deleted) characters)
 # would be represented by a document snapshot of ['Hello ', 5, 'world']
 
-p = ->#require('util').debug
-i = ->#require('util').inspect
-
 exports ?= {}
 
 exports.name = 'text-tp2'
@@ -33,7 +30,6 @@ exports.tp2 = true
 exports.initialVersion = -> []
 
 checkOp = (op) ->
-	#p "checkOp #{i op}"
 	throw new Error('Op must be an array of components') unless Array.isArray(op)
 	last = null
 	for c in op
@@ -83,7 +79,6 @@ exports._appendPart = appendPart = (doc, p) ->
 
 # Apply the op to the document. The document is not modified in the process.
 exports.apply = (doc, op) ->
-	p "Applying #{i op} to #{i doc}"
 	throw new Error('Snapshot is invalid') unless Array.isArray(doc)
 	checkOp op
 
@@ -108,13 +103,11 @@ exports.apply = (doc, op) ->
 				remainder -= part.length || part
 			appendPart newDoc, component.d
 	
-	p "= #{i newDoc}"
 	newDoc
 
 # Append an op component to the end of the specified op.
 # Exported for the randomOpGenerator.
 exports._append = append = (op, component) ->
-	#	p "append #{i op} + #{i component}"
 	if component == 0 || component.i == '' || component.i == 0 || component.d == 0
 		return
 	else if op.length == 0
@@ -130,9 +123,6 @@ exports._append = append = (op, component) ->
 		else
 			op.push component
 	
-	#p "-> #{i op}"
-	#checkOp op
-
 # Makes 2 functions for taking components from the start of an op, and for peeking
 # at the next op that could be taken.
 makeTake = (op) ->
@@ -146,7 +136,6 @@ makeTake = (op) ->
 	#
 	# Returns null when op is fully consumed.
 	take = (maxlength, insertsIndivisible) ->
-		p "take #{maxlength} index: #{index} off: #{offset}"
 		return null if index == op.length
 
 		e = op[index]
@@ -250,7 +239,6 @@ exports.prune = (op, otherOp) -> transformer op, otherOp, false
 
 # Compose 2 ops into 1 op.
 exports.compose = (op1, op2) ->
-	p "COMPOSE #{i op1} + #{i op2}"
 	checkOp op1
 	checkOp op2
 
@@ -259,29 +247,24 @@ exports.compose = (op1, op2) ->
 	[take, _] = makeTake op1
 
 	for component in op2
-		p "component in op2 #{i component}"
 
 		if typeof(component) == 'number' # Skip
 			# Just copy from op1.
 			length = component
 			while length > 0
 				chunk = take length
-				p "take #{length} = #{i chunk}"
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				append result, chunk
 				length -= componentLength chunk
-				p "#{i chunk} length = #{componentLength chunk}, length -> #{length}"
 
 		else if component.i != undefined # Insert
 			append result, {i:component.i}
 
 		else # Delete
 			length = component.d
-			p "delete #{length}"
 			while length > 0
 				chunk = take length
-				p "chunk #{i chunk}"
 				throw new Error('The op traverses more elements than the document has') unless chunk != null
 
 				chunkLength = componentLength chunk
@@ -297,7 +280,6 @@ exports.compose = (op1, op2) ->
 		throw new Error "Remaining fragments in op1: #{component}" unless component.i != undefined
 		append result, component
 
-	p "= #{i result}"
 	result
 
 if window?
