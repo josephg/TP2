@@ -129,10 +129,10 @@ text.generateRandomOp = (doc) ->
 
 	while remainder > 0
 		# If the document is long, we'll bias it toward deletes
-		switch randomInt 4
+		switch randomInt 3
 			when 0 then addSkip()
 			when 1 then addInsert()
-			when 2, 3 then addDelete()
+			when 2 then addDelete()
 
 	# The code above will never insert at the end of the document. Thats important...
 	addInsert() if randomInt(3) == 0
@@ -150,7 +150,7 @@ text.generateRandomDoc = ->
 	for [0...randomInt(10)]
 		stringNext = !stringNext
 		if stringNext
-			randomWord()
+			randomWord() + ' '
 		else
 			randomInt(5) + 1
 
