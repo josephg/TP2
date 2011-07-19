@@ -191,9 +191,7 @@ exports.normalize = (op) ->
 	newOp
 
 # This is a helper method to transform and prune. goForwards is true for transform, false for prune.
-transformer = (op, otherOp, goForwards, idDelta) ->
-	p "TRANSFORMER op #{i op} by #{i otherOp} (delta: #{idDelta}) forwards: #{goForwards}"
-
+transformer = (op, otherOp, goForwards, side) ->
 	checkOp op
 	checkOp otherOp
 	newOp = []
@@ -205,7 +203,7 @@ transformer = (op, otherOp, goForwards, idDelta) ->
 
 		if component.i != undefined # Insert text or tombs
 			if goForwards # transform - insert skips over inserted parts
-				if idDelta < 0
+				if side == 'left'
 					# The server's insert should go first.
 					append newOp, take() while peek()?.i != undefined
 
@@ -237,16 +235,15 @@ transformer = (op, otherOp, goForwards, idDelta) ->
 		throw new Error "Remaining fragments in the op: #{component}" unless component.i != undefined
 		append newOp, component
 
-	p "T = #{i newOp}"
 	newOp
 
 
 # transform op1 by op2. Return transformed version of op1.
 # op1 and op2 are unchanged by transform.
-# idDelta should be op1.id - op2.id
-exports.transform = (op, otherOp, idDelta) ->
-	throw new Error 'idDelta not specified' unless typeof(idDelta) == 'number' and idDelta != 0
-	transformer op, otherOp, true, idDelta
+# side should be 'left' or 'right', depending on if op1.id <> op2.id. 'left' == client op.
+exports.transform = (op, otherOp, side) ->
+	throw new Error "side (#{side}) should be 'left' or 'right'" unless side == 'left' or side == 'right'
+	transformer op, otherOp, true, side
 
 # Prune is the inverse of transform.
 exports.prune = (op, otherOp) -> transformer op, otherOp, false

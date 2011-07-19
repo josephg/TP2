@@ -74,8 +74,8 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 
 			if type.tp2 and client2.composed?
 				# TP2 requires that T(op3, op1 . T(op2, op1)) == T(op3, op2 . T(op1, op2)).
-				lhs = type.transform client2.composed, (type.compose client.composed, server_), -1
-				rhs = type.transform client2.composed, (type.compose server.composed, client_), -1
+				lhs = type.transform client2.composed, (type.compose client.composed, server_), 'left'
+				rhs = type.transform client2.composed, (type.compose server.composed, client_), 'left'
 
 				assert.deepEqual lhs, rhs
 	
@@ -85,7 +85,7 @@ testRandomOp = (type, initialDoc = type.initialVersion()) ->
 		[op1] = type.generateRandomOp initialDoc
 		[op2] = type.generateRandomOp initialDoc
 
-		for idDelta in [-1, 1]
+		for idDelta in ['left', 'right']
 			op1_ = type.transform op1, op2, idDelta
 			op1_pruned = type.prune op1_, op2, idDelta
 
@@ -117,18 +117,18 @@ collectStats = (type) ->
 	functions = ['transform', 'compose', 'apply', 'prune']
 
 	orig = {}
-	orig[fn] = type[fn] for fn in functions
+	orig[fn] = type[fn] for fn in functions when type[fn]?
 	restore = ->
-		type[fn] = orig[fn] for fn in functions
+		type[fn] = orig[fn] for fn in functions when orig[fn]?
 	
 	stats = {}
-	stats[fn] = 0 for fn in functions
+	stats[fn] = 0 for fn in functions when orig[fn]?
 
 	collect = (fn) -> (args...) ->
 		stats[fn]++
 		orig[fn].apply null, args
 	
-	type[fn] = collect fn for fn in functions
+	type[fn] = collect fn for fn in functions when orig[fn]?
 
 	[stats, restore]
 

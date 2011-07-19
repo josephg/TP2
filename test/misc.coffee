@@ -4,8 +4,8 @@ i = -> #require('util').inspect
 
 # Cross-transform function. Transform server by client and client by server. Returns
 # [server, client].
-exports.transformX = transformX = (type, server, client) ->
-	[type.transform(server, client, 1), type.transform(client, server, -1)]
+exports.transformX = transformX = (type, left, right) ->
+	[type.transform(left, right, 'left'), type.transform(right, left, 'right')]
 
 # new seed every 6 hours
 exports.seed = Math.floor(Date.now() / (1000*60*60*6))

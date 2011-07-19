@@ -16,11 +16,11 @@ exports['transform sanity'] = (test) ->
 			test.deepEqual (text.transform op1, op2, delta), expected
 			test.deepEqual (text.prune expected, op2, delta), op1
 		else
-			test.deepEqual (text.transform op1, op2, -1), expected
-			test.deepEqual (text.prune expected, op2, -1), op1
+			test.deepEqual (text.transform op1, op2, 'left'), expected
+			test.deepEqual (text.prune expected, op2, 'left'), op1
 
-			test.deepEqual (text.transform op1, op2, 1), expected
-			test.deepEqual (text.prune expected, op2, 1), op1
+			test.deepEqual (text.transform op1, op2, 'right'), expected
+			test.deepEqual (text.prune expected, op2, 'right'), op1
 	
 	tc [], [], []
 	tc [10], [10], [10]
@@ -29,8 +29,8 @@ exports['transform sanity'] = (test) ->
 	tc [{d:5}], [5], [{d:5}]
 
 	tc [10], [10, {i:'hi'}], [12]
-	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [{i:'aaa'}, 13], -1
-	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [3, {i:'aaa'}, 10], 1
+	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [{i:'aaa'}, 13], 'left'
+	tc [{i:'aaa'}, 10], [{i:'bbb'}, 10], [3, {i:'aaa'}, 10], 'right'
 	tc [10, {i:5}], [{i:'hi'}, 10], [12, {i:5}]
 	tc [{d:5}], [{i:'hi'}, 5], [2, {d:5}]
 
@@ -39,7 +39,7 @@ exports['transform sanity'] = (test) ->
 	tc [10, {i:5}], [{d:10}], [10, {i:5}]
 	tc [{d:5}], [{d:5}], [{d:5}]
 	
-	tc [{i:'mimsy'}], [{i: 10}], [{i:'mimsy'}, 10], -1
+	tc [{i:'mimsy'}], [{i: 10}], [{i:'mimsy'}, 10], 'left'
 
 	test.done()
 
